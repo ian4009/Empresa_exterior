@@ -1,0 +1,77 @@
+from conexao import iniciar_spark
+from datetime import datetime
+import requests
+
+# 📌 Inicia a SparkSession
+spark = iniciar_spark()
+if not spark:
+    raise Exception("❌ SparkSession não foi iniciada. Verifique a conexão.")
+
+# 📌 Configurações da conexão com PostgreSQL
+url_oltp = "jdbc:postgresql://localhost:5432/banco_oltp"
+url_dm = "jdbc:postgresql://localhost:5432/datamart_empresa_exterior"
+
+tabela_oltp = "transacoes"
+tabela_dm = "fato_transacoes"
+
+properties = {
+    "user": "postgres",
+    "password": "12345",
+    "driver": "org.postgresql.Driver"
+}
+
+# 📌 Lê dados da tabela OLTP
+df_oltp = spark.read.jdbc(url=url_oltp, table=tabela_oltp, properties=properties)
+print("✅ Dados extraídos do sistema OLTP")
+
+# 📌 Converte valores de câmbio com base na data da transação
+def buscar_taxa_cambio(data, moeda_origem, moeda_destino):
+    try:
+        data_formatada = datetime.strptime(data, "%Y-%m-%d").strftime("%Y-%m-%d")
+        url = f"https://api.frankfurter.app/{data_formatada}?from={moeda_origem}&to={moeda_destino}"
+        response = requests.get(url)
+        response.raise_for_status()
+        taxa = response.json()["rates"][moeda_destino]
+        return float(taxa)
+    except Exception as e:
+        print(f"❌ Erro na API de câmbio ({moeda_origem} -> {moeda_destino}): {e}")
+        return None
+
+# 📌 UDF para aplicar a conversão
+from pyspark.sql.functions import udf, upper
+from pyspark.sql.types import DoubleType
+
+@udf(DoubleType())
+def converter_valor(valor, data, moeda_origem, moeda_destino):
+    taxa = buscar_taxa_cambio(data, moeda_origem, moeda_destino)
+    if taxa:
+        return float(valor) * taxa
+    return None
+
+# 📌 Aplica transformação
+df_tratado = df_oltp.withColumn("valor_convertido", converter_valor(
+    df_oltp["valor"],
+    df_oltp["data_transacao"],
+    df_oltp["moeda_origem"],
+    df_oltp["moeda_destino"]
+))
+
+# 📌 Formata os campos conforme regras do DM
+from pyspark.sql.functions import col, date_format, lpad
+
+df_tratado = df_tratado \
+    .withColumn("data_id", date_format(col("data_transacao"), "yyyyMMdd").cast("int")) \
+    .withColumn("pais_origem", upper(col("pais_origem"))) \
+    .withColumn("pais_destino", upper(col("pais_destino"))) \
+    .withColumn("produto", upper(col("produto"))) \
+    .withColumn("meio_transporte", upper(col("meio_transporte")))
+
+# 📌 Salva no Data Mart
+df_tratado.write.jdbc(
+    url=url_dm,
+    table=tabela_dm,
+    mode="overwrite",
+    properties=properties
+)
+
+print("✅ Dados carregados no Data Mart com sucesso!")
