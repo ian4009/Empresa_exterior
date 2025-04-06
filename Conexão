@@ -1,5 +1,7 @@
 from pyspark.sql import SparkSession
 
+
+
 # Caminho para o driver JDBC
 jdbc_driver_path = "lib/postgresql-42.7.4.jar"
 
@@ -31,3 +33,41 @@ df.printSchema()
 
 # Finaliza a sessão
 spark.stop()
+
+# from pyspark.sql import SparkSession
+# import os
+#
+# def iniciar_spark():
+#     # Caminho absoluto para o driver JDBC PostgreSQL
+#     caminho_jar = "C:/Users/Shirley/Downloads/postgresql-42.7.4.jar"
+#
+#     print("🔍 Verificando se o driver JDBC existe no caminho informado...")
+#     if not os.path.isfile(caminho_jar):
+#         print(f"❌ Driver JDBC não encontrado em: {caminho_jar}")
+#         return None
+#     else:
+#         print(f"✅ Driver JDBC localizado em: {caminho_jar}")
+#
+#     try:
+#         print("🚀 Iniciando SparkSession com o driver PostgreSQL...")
+#         spark = SparkSession.builder \
+#             .appName("StarComex_ETL") \
+#             .config("spark.jars", caminho_jar) \
+#             .config("spark.driver.extraClassPath", caminho_jar) \
+#             .getOrCreate()
+#
+#         print("✅ SparkSession criada com sucesso!")
+#         return spark
+#
+#     except Exception as e:
+#         print(f"❌ Erro ao iniciar SparkSession: {e}")
+#         return None
+#
+# # Testa a função se o arquivo for executado diretamente
+# if __name__ == "__main__":
+#     spark_teste = iniciar_spark()
+#     if spark_teste:
+#         print("🎉 Teste concluído: SparkSession está pronta para uso.")
+#     else:
+#         print("⚠️ Teste falhou: Não foi possível iniciar a SparkSession.")
+
