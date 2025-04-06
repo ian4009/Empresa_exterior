@@ -1,18 +1,24 @@
-from conexao import iniciar_spark
+from pyspark.sql import SparkSession
 from datetime import datetime
 import requests
 
 # 📌 Inicia a SparkSession
-spark = iniciar_spark()
+jdbc_driver_path = "lib/postgresql-42.7.4.jar"
+
+spark = SparkSession.builder \
+    .appName("ConexaoPostgres") \
+    .config("spark.jars", jdbc_driver_path) \
+    .getOrCreate()
+
 if not spark:
     raise Exception("❌ SparkSession não foi iniciada. Verifique a conexão.")
 
 # 📌 Configurações da conexão com PostgreSQL
-url_oltp = "jdbc:postgresql://localhost:5432/banco_oltp"
-url_dm = "jdbc:postgresql://localhost:5432/datamart_empresa_exterior"
+url_oltp = "jdbc:postgresql://localhost:5432/empresa_exterior"
+url_dm = "jdbc:postgresql://localhost:5432/empresa_exteriorOLAP"  # ✅ Novo nome de banco
 
 tabela_oltp = "transacoes"
-tabela_dm = "fato_transacoes"
+tabela_dm = "Transacoes_desnormalizada"  # ✅ Novo nome de tabela
 
 properties = {
     "user": "postgres",
@@ -49,29 +55,46 @@ def converter_valor(valor, data, moeda_origem, moeda_destino):
     return None
 
 # 📌 Aplica transformação
-df_tratado = df_oltp.withColumn("valor_convertido", converter_valor(
-    df_oltp["valor"],
-    df_oltp["data_transacao"],
-    df_oltp["moeda_origem"],
-    df_oltp["moeda_destino"]
-))
+df_oltp.printSchema()
 
-# 📌 Formata os campos conforme regras do DM
-from pyspark.sql.functions import col, date_format, lpad
+from pyspark.sql.functions import col
 
-df_tratado = df_tratado \
-    .withColumn("data_id", date_format(col("data_transacao"), "yyyyMMdd").cast("int")) \
-    .withColumn("pais_origem", upper(col("pais_origem"))) \
-    .withColumn("pais_destino", upper(col("pais_destino"))) \
-    .withColumn("produto", upper(col("produto"))) \
-    .withColumn("meio_transporte", upper(col("meio_transporte")))
+# Ajusta para a estrutura da tabela transacoes_denormalizada
+# df_tratado = df_oltp \
+#     .withColumnRenamed("valor_monetario", "valor_monetario") \
+#     .withColumnRenamed("meio_transporte", "descricao_transporte") \
+#     .withColumnRenamed("categoria_produto", "desc_cat_produto") \
+#     .withColumnRenamed("produto", "desc_produto") \
+#     .withColumnRenamed("codigo_ncm", "codigo_ncm") \
+#     .withColumnRenamed("nome_pais", "nome_pais") \
+#     .withColumnRenamed("codigo_iso", "cod_iso") \
+#     .withColumnRenamed("bloco_economico", "nome_bloco") \
+#     .withColumnRenamed("data_cambio", "data_cambio") \
+#     .withColumnRenamed("moeda_origem", "moeda_origem") \
+#     .withColumnRenamed("moeda_destino", "moeda_destino") \
+#     .withColumnRenamed("descricao_moeda", "descricao_moeda") \
+#     .withColumn("quantidade", converter_valor(
+#         col("valor_monetario"),
+#         col("data_cambio"),
+#         col("moeda_origem"),
+#         col("moeda_destino")
+#     )) \
+#     .withColumn("pais_origem", upper(col("pais_origem"))) \
+#     .withColumn("pais_destino", upper(col("pais_destino"))) \
+#     .withColumn("desc_cat_produto", upper(col("desc_cat_produto"))) \
+#     .withColumn("desc_produto", upper(col("desc_produto"))) \
+#     .withColumn("descricao_transporte", upper(col("descricao_transporte"))) \
+#     .withColumn("nome_pais", upper(col("nome_pais"))) \
+#     .withColumn("nome_bloco", upper(col("nome_bloco"))) \
+#     .withColumn("descricao_moeda", upper(col("descricao_moeda"))) \
+#     .withColumn("taxa_cambio_att", upper(col("taxa_cambio_att")))
 
 # 📌 Salva no Data Mart
-df_tratado.write.jdbc(
-    url=url_dm,
-    table=tabela_dm,
-    mode="overwrite",
-    properties=properties
-)
+# df_tratado.write.jdbc(
+#     url=url_dm,
+#     table=tabela_dm,
+#     mode="overwrite",
+#     properties=properties
+# )
 
 print("✅ Dados carregados no Data Mart com sucesso!")
